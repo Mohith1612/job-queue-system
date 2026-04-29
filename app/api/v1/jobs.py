@@ -1,12 +1,13 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
 from app.db.models.job import JobStatus
 from app.db.schemas.job import JobCreate, JobDetail, JobListResponse, JobRead
+from app.main import limiter
 from app.services.job_service import cancel_job, create_job, get_job, list_jobs
 from app.worker.executors.registry import EXECUTOR_REGISTRY
 
@@ -20,7 +21,9 @@ VALID_PRIORITIES = {"high", "medium", "low"}
 
 
 @router.post("", response_model=JobRead, status_code=201)
+@limiter.limit("10/minute")
 async def create_job_endpoint(
+    request: Request,
     body: JobCreate,
     response: Response,
     session: AsyncSession = Depends(get_db),
