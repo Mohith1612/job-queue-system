@@ -4,6 +4,9 @@ import type { JobPriority } from '../types'
 import { createJob } from '../api/jobs'
 import { showToast } from '../components/ui/Toast'
 import { RateLimitError } from '../api/client'
+import JsonViewer from '../components/ui/JsonViewer'
+import PriorityBadge from '../components/ui/PriorityBadge'
+import TypeBadge from '../components/ui/TypeBadge'
 
 const PRESETS = {
   failing: {
@@ -102,8 +105,12 @@ export default function CreateJob() {
 
   const inputCls = 'w-full bg-bg-input border border-border text-text-primary text-sm font-mono px-3 py-2 focus:outline-none focus:border-accent'
 
+  const parsedPayload = (() => {
+    try { return JSON.parse(payloadStr) } catch { return null }
+  })()
+
   return (
-    <div className="p-6 max-w-2xl">
+    <div className="p-6">
       <h1 className="text-base font-semibold tracking-wide uppercase text-text-secondary font-mono mb-5">
         Create Job
       </h1>
@@ -124,97 +131,127 @@ export default function CreateJob() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div>
-          <label className="block text-[10px] tracking-widest text-text-muted font-mono mb-1.5">JOB TYPE</label>
-          <select
-            className={inputCls}
-            value={jobType}
-            onChange={(e) => setJobType(e.target.value)}
-          >
-            {JOB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
+      <div className="flex gap-6 items-start">
+        {/* Form — 60% */}
+        <form onSubmit={handleSubmit} className="flex-[3] min-w-0 space-y-5">
+          <div>
+            <label className="block text-[10px] tracking-widest text-text-muted font-mono mb-1.5">JOB TYPE</label>
+            <select
+              className={inputCls}
+              value={jobType}
+              onChange={(e) => setJobType(e.target.value)}
+            >
+              {JOB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
 
-        <div>
-          <label className="block text-[10px] tracking-widest text-text-muted font-mono mb-1.5">PRIORITY</label>
-          <div className="flex gap-2">
-            {PRIORITIES.map((p) => (
+          <div>
+            <label className="block text-[10px] tracking-widest text-text-muted font-mono mb-1.5">PRIORITY</label>
+            <div className="flex gap-2">
+              {PRIORITIES.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPriority(p)}
+                  className={`flex-1 py-1.5 text-xs font-mono uppercase tracking-wider border transition-colors ${
+                    priority === p
+                      ? PRIORITY_CLS[p]
+                      : 'border-border text-text-muted hover:text-text-secondary'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] tracking-widest text-text-muted font-mono mb-1.5">
+              PAYLOAD <span className={`ml-2 ${payloadValid ? 'text-status-completed' : 'text-status-failed'}`}>
+                {payloadValid ? '✓ valid json' : '✗ invalid json'}
+              </span>
+            </label>
+            <textarea
+              rows={8}
+              className={`${inputCls} resize-y ${!payloadValid ? 'border-status-failed' : ''}`}
+              value={payloadStr}
+              onChange={(e) => setPayloadStr(e.target.value)}
+              spellCheck={false}
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] tracking-widest text-text-muted font-mono mb-1.5">
+              IDEMPOTENCY KEY <span className="text-text-muted">(optional)</span>
+            </label>
+            <input
+              type="text"
+              className={inputCls}
+              value={idempotencyKey}
+              onChange={(e) => setIdempotencyKey(e.target.value)}
+              placeholder="leave empty for auto-generated"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] tracking-widest text-text-muted font-mono mb-1.5">MAX ATTEMPTS</label>
+            <div className="flex items-center gap-3">
               <button
-                key={p}
                 type="button"
-                onClick={() => setPriority(p)}
-                className={`flex-1 py-1.5 text-xs font-mono uppercase tracking-wider border transition-colors ${
-                  priority === p
-                    ? PRIORITY_CLS[p]
-                    : 'border-border text-text-muted hover:text-text-secondary'
-                }`}
+                className="border border-border text-text-secondary w-8 h-8 font-mono hover:bg-bg-elevated disabled:opacity-30"
+                disabled={maxAttempts <= 1}
+                onClick={() => setMaxAttempts((n) => Math.max(1, n - 1))}
               >
-                {p}
+                −
               </button>
-            ))}
+              <span className="text-text-primary font-mono text-sm w-4 text-center">{maxAttempts}</span>
+              <button
+                type="button"
+                className="border border-border text-text-secondary w-8 h-8 font-mono hover:bg-bg-elevated disabled:opacity-30"
+                disabled={maxAttempts >= 10}
+                onClick={() => setMaxAttempts((n) => Math.min(10, n + 1))}
+              >
+                +
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div>
-          <label className="block text-[10px] tracking-widest text-text-muted font-mono mb-1.5">
-            PAYLOAD <span className={`ml-2 ${payloadValid ? 'text-status-completed' : 'text-status-failed'}`}>
-              {payloadValid ? '✓ valid json' : '✗ invalid json'}
-            </span>
-          </label>
-          <textarea
-            rows={8}
-            className={`${inputCls} resize-y ${!payloadValid ? 'border-status-failed' : ''}`}
-            value={payloadStr}
-            onChange={(e) => setPayloadStr(e.target.value)}
-            spellCheck={false}
-          />
-        </div>
+          <button
+            type="submit"
+            disabled={!payloadValid || submitting || rateLimited}
+            className="w-full bg-accent text-bg-base font-mono text-sm py-2.5 hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {rateLimited ? 'Rate limited — wait...' : submitting ? 'Submitting...' : 'Submit Job'}
+          </button>
+        </form>
 
-        <div>
-          <label className="block text-[10px] tracking-widest text-text-muted font-mono mb-1.5">
-            IDEMPOTENCY KEY <span className="text-text-muted">(optional)</span>
-          </label>
-          <input
-            type="text"
-            className={inputCls}
-            value={idempotencyKey}
-            onChange={(e) => setIdempotencyKey(e.target.value)}
-            placeholder="leave empty for auto-generated"
-          />
-        </div>
+        {/* Preview — 40% */}
+        <div className="flex-[2] min-w-0 border border-border bg-bg-surface p-4 space-y-4 sticky top-6">
+          <p className="text-[10px] uppercase tracking-widest text-text-muted font-mono">Live Preview</p>
 
-        <div>
-          <label className="block text-[10px] tracking-widest text-text-muted font-mono mb-1.5">MAX ATTEMPTS</label>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              className="border border-border text-text-secondary w-8 h-8 font-mono hover:bg-bg-elevated disabled:opacity-30"
-              disabled={maxAttempts <= 1}
-              onClick={() => setMaxAttempts((n) => Math.max(1, n - 1))}
-            >
-              −
-            </button>
-            <span className="text-text-primary font-mono text-sm w-4 text-center">{maxAttempts}</span>
-            <button
-              type="button"
-              className="border border-border text-text-secondary w-8 h-8 font-mono hover:bg-bg-elevated disabled:opacity-30"
-              disabled={maxAttempts >= 10}
-              onClick={() => setMaxAttempts((n) => Math.min(10, n + 1))}
-            >
-              +
-            </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <TypeBadge type={jobType} />
+            <PriorityBadge priority={priority} />
+            <span className="text-[10px] font-mono text-text-muted">×{maxAttempts}</span>
           </div>
-        </div>
 
-        <button
-          type="submit"
-          disabled={!payloadValid || submitting || rateLimited}
-          className="w-full bg-accent text-bg-base font-mono text-sm py-2.5 hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {rateLimited ? 'Rate limited — wait...' : submitting ? 'Submitting...' : 'Submit Job'}
-        </button>
-      </form>
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-text-muted font-mono mb-2">Payload</p>
+            {payloadValid ? (
+              <JsonViewer data={parsedPayload} />
+            ) : (
+              <p className="text-[10px] font-mono text-status-failed">invalid json</p>
+            )}
+          </div>
+
+          {idempotencyKey && (
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-text-muted font-mono mb-1">Idempotency Key</p>
+              <p className="text-xs font-mono text-text-secondary break-all">{idempotencyKey}</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

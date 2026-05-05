@@ -6,6 +6,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Cell,
 } from 'recharts'
 import type { JobStatus } from '../../types'
 
@@ -58,7 +59,7 @@ export default function StatusChart({ counts }: Props) {
         />
         <Bar dataKey="count" radius={0}>
           {data.map((entry) => (
-            <rect key={entry.status} fill={entry.fill} />
+            <Cell key={entry.status} fill={entry.fill} />
           ))}
         </Bar>
       </BarChart>

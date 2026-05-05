@@ -9,6 +9,7 @@ import PriorityBadge from '../components/ui/PriorityBadge'
 import TypeBadge from '../components/ui/TypeBadge'
 import JsonViewer from '../components/ui/JsonViewer'
 import LogTimeline from '../components/jobs/LogTimeline'
+import RefreshIndicator from '../components/ui/RefreshIndicator'
 
 function formatAbs(iso: string) {
   return new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'medium' })
@@ -26,7 +27,7 @@ export default function JobDetail() {
   const queryClient = useQueryClient()
   const [confirmCancel, setConfirmCancel] = useState(false)
 
-  const { data: job, isLoading } = useQuery({
+  const { data: job, isLoading, refetch } = useQuery({
     queryKey: ['job', id],
     queryFn: () => getJob(id!),
     refetchInterval: (query) =>
@@ -146,6 +147,9 @@ export default function JobDetail() {
             <p className="text-[10px] uppercase tracking-widest text-text-muted font-mono mb-3">
               Logs <span className="text-text-muted">({job.logs.length})</span>
             </p>
+            {job.status === 'processing' && (
+              <RefreshIndicator seconds={3} onRefresh={refetch} />
+            )}
             <LogTimeline logs={job.logs} />
           </section>
 
