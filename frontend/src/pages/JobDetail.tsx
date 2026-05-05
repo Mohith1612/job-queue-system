@@ -7,32 +7,14 @@ import { showToast } from '../components/ui/Toast'
 import StatusBadge from '../components/ui/StatusBadge'
 import PriorityBadge from '../components/ui/PriorityBadge'
 import TypeBadge from '../components/ui/TypeBadge'
-import type { LogLevel } from '../types'
-
-const LOG_LEVEL_CLS: Record<LogLevel, string> = {
-  info: 'border-log-info text-log-info',
-  warning: 'border-log-warning text-log-warning',
-  error: 'border-log-error text-log-error',
-  debug: 'border-log-debug text-log-debug',
-}
+import JsonViewer from '../components/ui/JsonViewer'
+import LogTimeline from '../components/jobs/LogTimeline'
 
 function formatAbs(iso: string) {
   return new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'medium' })
 }
 
-function formatLogTime(iso: string) {
-  const d = new Date(iso)
-  return d.toTimeString().slice(0, 8) + '.' + String(d.getMilliseconds()).padStart(3, '0')
-}
 
-function JsonPre({ data }: { data: Record<string, unknown> | null | undefined }) {
-  if (!data) return null
-  return (
-    <pre className="bg-bg-base border border-border rounded p-3 text-xs font-code text-text-secondary overflow-x-auto whitespace-pre-wrap">
-      {JSON.stringify(data, null, 2)}
-    </pre>
-  )
-}
 
 function copyToClipboard(text: string) {
   navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard', 'info'))
@@ -149,13 +131,13 @@ export default function JobDetail() {
           {job.result && (
             <section className="border border-border bg-bg-surface p-4">
               <p className="text-[10px] uppercase tracking-widest text-text-muted font-mono mb-3">Result</p>
-              <JsonPre data={job.result} />
+              <JsonViewer data={job.result} />
             </section>
           )}
 
           <section className="border border-border bg-bg-surface p-4">
             <p className="text-[10px] uppercase tracking-widest text-text-muted font-mono mb-3">Payload</p>
-            <JsonPre data={job.payload} />
+            <JsonViewer data={job.payload} />
           </section>
         </div>
 
@@ -164,26 +146,7 @@ export default function JobDetail() {
             <p className="text-[10px] uppercase tracking-widest text-text-muted font-mono mb-3">
               Logs <span className="text-text-muted">({job.logs.length})</span>
             </p>
-            <div className="bg-bg-base border border-border overflow-y-auto max-h-96">
-              {job.logs.length === 0 ? (
-                <p className="text-center text-text-muted text-xs font-mono py-8">No log entries yet</p>
-              ) : (
-                job.logs.map((log) => (
-                  <div
-                    key={log.id}
-                    className={`flex gap-3 border-l-2 pl-3 py-2 border-b border-border/30 last:border-b-0 ${LOG_LEVEL_CLS[log.level]}`}
-                  >
-                    <span className="text-[10px] text-text-muted font-mono whitespace-nowrap">
-                      {formatLogTime(log.created_at)}
-                    </span>
-                    <span className="text-[9px] uppercase w-14 text-right shrink-0 font-mono">
-                      {log.level}
-                    </span>
-                    <span className="text-xs font-mono text-text-primary">{log.message}</span>
-                  </div>
-                ))
-              )}
-            </div>
+            <LogTimeline logs={job.logs} />
           </section>
 
           {canCancel && (

@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { RefreshCw } from 'lucide-react'
 import { listJobs } from '../api/jobs'
 import type { JobStatus, JobPriority } from '../types'
 import JobFilters from '../components/jobs/JobFilters'
 import JobTable from '../components/jobs/JobTable'
+import RefreshIndicator from '../components/ui/RefreshIndicator'
 
 interface Filters {
   status: JobStatus | ''
@@ -18,7 +18,7 @@ export default function Dashboard() {
   const [page, setPage] = useState(1)
   const [filters, setFilters] = useState<Filters>({ status: '', type: '', priority: '' })
 
-  const { data, isLoading, isFetching, refetch } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ['jobs', page, filters],
     queryFn: () =>
       listJobs({
@@ -28,8 +28,9 @@ export default function Dashboard() {
         ...(filters.type ? { type: filters.type } : {}),
         ...(filters.priority ? { priority: filters.priority } : {}),
       }),
-    refetchInterval: 5000,
   })
+
+  const doRefresh = useCallback(() => { refetch() }, [refetch])
 
   function handleFiltersChange(f: Filters) {
     setFilters(f)
@@ -38,13 +39,11 @@ export default function Dashboard() {
 
   return (
     <div className="p-6">
+      <RefreshIndicator seconds={5} onRefresh={doRefresh} />
       <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-3">
-          <h1 className="text-base font-semibold tracking-wide uppercase text-text-secondary font-mono">
-            Jobs
-          </h1>
-          {isFetching && <RefreshCw size={12} className="text-text-muted animate-spin" />}
-        </div>
+        <h1 className="text-base font-semibold tracking-wide uppercase text-text-secondary font-mono">
+          Jobs
+        </h1>
         <button
           onClick={() => navigate('/create')}
           className="bg-accent text-bg-base font-mono text-xs px-4 py-2 hover:bg-accent/90 transition-colors"
