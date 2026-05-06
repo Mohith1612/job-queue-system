@@ -4,8 +4,7 @@ WORKDIR /app
 
 COPY pyproject.toml .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir "sqlalchemy[asyncio]" asyncpg \
-        "redis>=5.0" pydantic "pydantic-settings>=2.0"
+    pip install --no-cache-dir .
 
 FROM python:3.12-slim AS runtime
 
