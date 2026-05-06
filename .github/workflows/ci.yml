@@ -1,0 +1,192 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  security:
+    name: Dependency Security Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Audit Python dependencies
+        run: |
+          pip install pip-audit
+          pip-audit --requirement <(pip install -e ".[dev]" --dry-run -q 2>&1 | grep -v "^$" || true)
+          pip install -e ".[dev]" -q
+          pip-audit
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Audit frontend dependencies (high+)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm audit --audit-level=high --omit=dev
+
+  quality:
+    name: Lint, Typecheck, Build, Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: jobqueue
+          POSTGRES_PASSWORD: jobqueue
+          POSTGRES_DB: jobqueue_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jobqueue"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Unit tests
+        run: pytest tests/unit/ -v
+
+      - name: Integration tests (coverage)
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://jobqueue:jobqueue@localhost/jobqueue_test
+        run: pytest tests/integration/ -v --cov=app --cov-report=xml --cov-report=term-missing
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+          if-no-files-found: warn
+
+  docker-build:
+    name: Build & Push Images (linux/arm64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [security, quality]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.api
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ghcr.io/mohith1612/job-queue-system/api:latest
+            ghcr.io/mohith1612/job-queue-system/api:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.worker
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ghcr.io/mohith1612/job-queue-system/worker:latest
+            ghcr.io/mohith1612/job-queue-system/worker:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-backend:
+    name: Deploy Backend to Oracle VM
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [docker-build]
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/job-queue-system
+
+            echo "==> Pulling new images"
+            docker compose pull
+
+            echo "==> Recreating containers"
+            docker compose up -d --force-recreate --remove-orphans
+
+            echo "==> Health check"
+            sleep 5
+            docker compose exec -T api curl -sf http://localhost:8000/health | grep '"status":"ok"'
+            echo "Deploy complete."
