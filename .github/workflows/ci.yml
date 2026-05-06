@@ -25,8 +25,7 @@ jobs:
       - name: Audit Python dependencies
         run: |
           pip install pip-audit
-          pip-audit --requirement <(pip install -e ".[dev]" --dry-run -q 2>&1 | grep -v "^$" || true)
-          pip install -e ".[dev]" -q
+          pip install -e ".[dev]"
           pip-audit
 
       - name: Setup Node.js
