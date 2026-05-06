@@ -24,9 +24,9 @@ jobs:
 
       - name: Audit Python dependencies
         run: |
-          pip install pip-audit
+          pip install --upgrade pip pip-audit
           pip install -e ".[dev]"
-          pip-audit
+          pip-audit --skip-editable
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
