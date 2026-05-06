@@ -190,5 +190,5 @@ jobs:
 
             echo "==> Health check"
             sleep 5
-            docker compose exec -T api curl -sf http://localhost:8000/health | grep '"status":"ok"'
+            docker compose exec -T api python -c "import urllib.request, json, sys; r=json.loads(urllib.request.urlopen('http://localhost:8000/health').read()); sys.exit(0 if r.get('status')=='ok' else 1)"
             echo "Deploy complete."
