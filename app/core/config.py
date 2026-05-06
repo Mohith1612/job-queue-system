@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     recovery_stuck_threshold_minutes: int = 10
 
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    rate_limit_per_minute: int = 10
 
     @field_validator("cors_origins", mode="before")
     @classmethod

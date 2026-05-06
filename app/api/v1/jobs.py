@@ -5,11 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
+from app.core.config import get_settings
 from app.db.models.job import JobStatus
 from app.db.schemas.job import JobCreate, JobDetail, JobListResponse, JobRead
 from app.main import limiter
 from app.services.job_service import cancel_job, create_job, get_job, list_jobs
 from app.worker.executors.registry import EXECUTOR_REGISTRY
+
+_RATE_LIMIT = f"{get_settings().rate_limit_per_minute}/minute"
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +24,7 @@ VALID_PRIORITIES = {"high", "medium", "low"}
 
 
 @router.post("", response_model=JobRead, status_code=201)
-@limiter.limit("10/minute")
+@limiter.limit(_RATE_LIMIT)
 async def create_job_endpoint(
     request: Request,
     body: JobCreate,
