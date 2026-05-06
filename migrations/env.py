@@ -1,4 +1,5 @@
 import asyncio
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -15,6 +16,11 @@ config = context.config
 # This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Allow DATABASE_URL env var to override the hardcoded alembic.ini value.
+# Required when running inside Docker where the host is "postgres", not "localhost".
+if url := os.environ.get("DATABASE_URL"):
+    config.set_main_option("sqlalchemy.url", url)
 
 from app.db.base import Base
 from app.db.models import Job, JobLog  # noqa: F401 — registers models for autogenerate
