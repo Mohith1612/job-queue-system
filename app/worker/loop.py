@@ -1,10 +1,12 @@
 import asyncio
+import socket
 from datetime import timedelta
 from uuid import UUID
 
 import structlog
 from sqlalchemy import select
 
+from app.core.telemetry import counter, histogram, updown
 from app.db.models.job import Job, JobStatus
 from app.db.models.job_log import JobLog
 from app.db.session import AsyncSessionLocal
@@ -16,6 +18,8 @@ from app.utils.time import epoch_now, now_utc
 from app.worker.executors.registry import get_executor
 
 logger = structlog.get_logger(__name__)
+
+_worker_id = socket.gethostname()
 
 
 async def _add_log(session, job_id: UUID, level: str, message: str) -> None:
@@ -38,6 +42,14 @@ async def handle_failure(job_id: str, error_message: str, redis) -> None:
                 session, job.id, "error",
                 f"Max attempts ({job.max_attempts}) reached. Job permanently failed."
             )
+            if c := counter("jobs_failed"):
+                c.add(1, {
+                    "job_type": job.type,
+                    "priority": job.priority,
+                    "failure_reason": "max_attempts_exhausted",
+                })
+            if g := updown("jobs_active"):
+                g.add(-1, {"job_type": job.type})
             logger.error(
                 "job_permanently_failed",
                 job_id=job_id,
@@ -54,6 +66,16 @@ async def handle_failure(job_id: str, error_message: str, redis) -> None:
                 session, job.id, "warning",
                 f"Scheduled retry in {delay:.1f}s (attempt {job.attempts}/{job.max_attempts})"
             )
+            if c := counter("jobs_retried"):
+                c.add(1, {
+                    "job_type": job.type,
+                    "priority": job.priority,
+                    "attempt_number": str(job.attempts),
+                })
+            if h := histogram("retry_backoff"):
+                h.record(delay, {"job_type": job.type, "attempt_number": str(job.attempts)})
+            if g := updown("jobs_active"):
+                g.add(-1, {"job_type": job.type})
             logger.warning(
                 "job_retry_scheduled",
                 job_id=job_id,
@@ -84,6 +106,8 @@ async def worker_loop(redis) -> None:
                 source = "fifo"
 
             if not job_id:
+                if c := counter("worker_loop_iterations"):
+                    c.add(1, {"worker_id": _worker_id, "outcome": "no_job"})
                 continue
 
             structlog.contextvars.bind_contextvars(job_id=job_id)
@@ -120,9 +144,15 @@ async def worker_loop(redis) -> None:
                     started_at = job.started_at
                     attempt = job.attempts
                     max_attempts = job.max_attempts
+                    job_priority = job.priority
+
+                wait_seconds = (started_at - created_at).total_seconds()
+                if h := histogram("job_wait_duration"):
+                    h.record(wait_seconds, {"job_type": executor_type, "priority": job_priority})
+                if g := updown("jobs_active"):
+                    g.add(1, {"job_type": executor_type})
 
                 log_level = "info" if attempt == 1 else "warning"
-                wait_seconds = round((started_at - created_at).total_seconds(), 3)
                 getattr(logger, log_level)(
                     "job_execution_started",
                     job_id=job_id,
@@ -130,7 +160,7 @@ async def worker_loop(redis) -> None:
                     attempt=attempt,
                     max_attempts=max_attempts,
                     queue_source=source,
-                    wait_seconds=wait_seconds,
+                    wait_seconds=round(wait_seconds, 3),
                 )
 
                 executor = get_executor(executor_type)
@@ -140,13 +170,20 @@ async def worker_loop(redis) -> None:
                         executor.execute(job_id=job_id, payload=payload),
                         timeout=executor.max_execution_seconds,
                     )
-                    duration_ms = round((now_utc() - t_start).total_seconds() * 1000, 2)
+                    duration_s = (now_utc() - t_start).total_seconds()
+                    if h := histogram("job_processing_duration"):
+                        h.record(duration_s, {"job_type": executor_type, "priority": job_priority})
+                    if h := histogram("worker_executor_duration"):
+                        h.record(duration_s, {"job_type": executor_type, "worker_id": _worker_id})
+
                     async with AsyncSessionLocal() as session:
                         job = await session.get(Job, UUID(job_id))
                         if job is None:
                             continue
                         if job.status == JobStatus.CANCELLED.value:
                             logger.info("job_cancelled_during_execution", job_id=job_id)
+                            if g := updown("jobs_active"):
+                                g.add(-1, {"job_type": executor_type})
                             continue
                         job.status = JobStatus.COMPLETED.value
                         job.completed_at = now_utc()
@@ -154,36 +191,59 @@ async def worker_loop(redis) -> None:
                         job.error = None
                         await _add_log(session, job.id, "info", f"Completed successfully. Result: {result}")
                         await session.commit()
+
+                    if c := counter("jobs_completed"):
+                        c.add(1, {"job_type": executor_type, "priority": job_priority})
+                    if g := updown("jobs_active"):
+                        g.add(-1, {"job_type": executor_type})
+                    if c := counter("worker_loop_iterations"):
+                        c.add(1, {"worker_id": _worker_id, "outcome": "job_processed"})
+
                     logger.info(
                         "job_completed",
                         job_id=job_id,
                         job_type=executor_type,
-                        duration_ms=duration_ms,
+                        duration_ms=round(duration_s * 1000, 2),
                     )
 
                 except asyncio.TimeoutError:
-                    duration_ms = round((now_utc() - t_start).total_seconds() * 1000, 2)
+                    duration_s = (now_utc() - t_start).total_seconds()
+                    if h := histogram("job_processing_duration"):
+                        h.record(duration_s, {"job_type": executor_type, "priority": job_priority})
+                    if c := counter("jobs_failed"):
+                        c.add(1, {
+                            "job_type": executor_type,
+                            "priority": job_priority,
+                            "failure_reason": "timeout",
+                        })
                     logger.error(
                         "job_timed_out",
                         job_id=job_id,
                         job_type=executor_type,
                         timeout_seconds=executor.max_execution_seconds,
-                        duration_ms=duration_ms,
                     )
                     await handle_failure(
                         job_id,
                         f"Execution timed out after {executor.max_execution_seconds}s",
                         redis,
                     )
+
                 except Exception as exc:
-                    duration_ms = round((now_utc() - t_start).total_seconds() * 1000, 2)
+                    duration_s = (now_utc() - t_start).total_seconds()
+                    if h := histogram("job_processing_duration"):
+                        h.record(duration_s, {"job_type": executor_type, "priority": job_priority})
+                    if c := counter("jobs_failed"):
+                        c.add(1, {
+                            "job_type": executor_type,
+                            "priority": job_priority,
+                            "failure_reason": "executor_error",
+                        })
                     logger.error(
                         "job_execution_error",
                         job_id=job_id,
                         job_type=executor_type,
                         error_type=type(exc).__name__,
                         error=str(exc),
-                        duration_ms=duration_ms,
                     )
                     await handle_failure(job_id, str(exc), redis)
 
@@ -191,5 +251,7 @@ async def worker_loop(redis) -> None:
                 structlog.contextvars.unbind_contextvars("job_id", "job_type", "job_priority")
 
         except Exception as outer:
+            if c := counter("worker_loop_iterations"):
+                c.add(1, {"worker_id": _worker_id, "outcome": "error"})
             logger.exception("worker_loop_unexpected_error", error=str(outer))
             await asyncio.sleep(1)
