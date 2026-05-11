@@ -1,0 +1,129 @@
+{
+  "title": "Trace + Log Explorer",
+  "uid": "jq-trace-log",
+  "tags": ["job-queue"],
+  "timezone": "browser",
+  "refresh": "off",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "job_id",
+        "label": "Job ID",
+        "type": "textbox",
+        "current": { "value": "" },
+        "hide": 0
+      },
+      {
+        "name": "trace_id",
+        "label": "Trace ID",
+        "type": "textbox",
+        "current": { "value": "" },
+        "hide": 0
+      },
+      {
+        "name": "job_type",
+        "label": "Job Type",
+        "type": "custom",
+        "options": [
+          { "text": "All", "value": ".*" },
+          { "text": "email_send", "value": "email_send" },
+          { "text": "payment_retry", "value": "payment_retry" },
+          { "text": "report_generate", "value": "report_generate" }
+        ],
+        "current": { "text": "All", "value": ".*" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Trace Search — by Job ID",
+      "type": "traces",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 10 },
+      "datasource": { "uid": "tempo" },
+      "targets": [
+        {
+          "queryType": "traceql",
+          "query": "{ span.job.id = \"${job_id}\" }",
+          "tableType": "spans",
+          "limit": 20
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "All Logs for Job ID",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 10, "w": 24, "h": 10 },
+      "datasource": { "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{service=~\"job-queue.*\"} | json | job_id=`${job_id}`",
+          "legendFormat": ""
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true
+      }
+    },
+    {
+      "id": 3,
+      "title": "All Logs for Trace ID",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 20, "w": 24, "h": 10 },
+      "datasource": { "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{service=~\"job-queue.*\"} | json | trace_id=`${trace_id}`",
+          "legendFormat": ""
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "enableLogDetails": true
+      }
+    },
+    {
+      "id": 4,
+      "title": "Error Log Stream",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 30, "w": 24, "h": 8 },
+      "datasource": { "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{service=~\"job-queue.*\", level=\"error\"} | json | job_type=~`${job_type}`",
+          "legendFormat": ""
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Retry Scheduled Events",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 38, "w": 24, "h": 6 },
+      "datasource": { "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{service=\"job-queue-worker\"} | json | event=`job_retry_scheduled`",
+          "legendFormat": ""
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "enableLogDetails": true
+      }
+    }
+  ]
+}

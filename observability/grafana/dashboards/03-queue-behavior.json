@@ -1,0 +1,156 @@
+{
+  "title": "Queue Behavior",
+  "uid": "jq-queue-behavior",
+  "tags": ["job-queue"],
+  "timezone": "browser",
+  "refresh": "15s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "All Queue Depths (24h)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "jobqueue_queue_depth",
+          "legendFormat": "{{ queue_name }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "fillOpacity": 8 } }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Enqueue Rate",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 8, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (queue_name) (rate(jobqueue_enqueue_total[5m]))",
+          "legendFormat": "{{ queue_name }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "id": 3,
+      "title": "Dequeue Rate",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 8, "w": 8, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (queue_name) (rate(jobqueue_dequeue_total[5m]))",
+          "legendFormat": "{{ queue_name }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "id": 4,
+      "title": "Net Queue Change Rate (+ = growing)",
+      "type": "timeseries",
+      "gridPos": { "x": 16, "y": 8, "w": 8, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(jobqueue_enqueue_total[5m])) - sum(rate(jobqueue_dequeue_total[5m]))",
+          "legendFormat": "net rate"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 0.5 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Retry Storm Index by Job Type",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "jobqueue_retry_storm_index",
+          "legendFormat": "{{ job_type }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.3 },
+              { "color": "red", "value": 0.5 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Retry Backoff Distribution",
+      "type": "heatmap",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (le) (rate(jobqueue_retry_backoff_seconds_bucket[10m]))",
+          "legendFormat": "{{ le }}",
+          "format": "heatmap"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Wait Duration by Priority (P95)",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 6 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, priority) (rate(jobqueue_job_wait_duration_seconds_bucket[10m])))",
+          "legendFormat": "p50 {{ priority }}",
+          "instant": true
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, priority) (rate(jobqueue_job_wait_duration_seconds_bucket[10m])))",
+          "legendFormat": "p95 {{ priority }}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 8,
+      "title": "Idempotency Hit Rate",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 6 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (job_type) (rate(jobqueue_idempotency_hits_total[5m]))",
+          "legendFormat": "{{ job_type }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    }
+  ]
+}

@@ -1,0 +1,139 @@
+{
+  "title": "Worker Performance",
+  "uid": "jq-worker-perf",
+  "tags": ["job-queue"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-3h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Jobs Processed / min by Type",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (job_type) (rate(jobqueue_jobs_completed_total[5m])) * 60",
+          "legendFormat": "{{ job_type }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 2,
+      "title": "Worker Idle Ratio",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (worker_id) (rate(jobqueue_worker_idle_seconds_total[5m])) / sum by (worker_id) (rate(jobqueue_worker_loop_iterations_total[5m]))",
+          "legendFormat": "{{ worker_id }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Processing Duration P50 / P95 / P99 by Type",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, job_type) (rate(jobqueue_job_processing_duration_seconds_bucket[10m])))",
+          "legendFormat": "p50 {{ job_type }}",
+          "instant": true
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, job_type) (rate(jobqueue_job_processing_duration_seconds_bucket[10m])))",
+          "legendFormat": "p95 {{ job_type }}",
+          "instant": true
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, job_type) (rate(jobqueue_job_processing_duration_seconds_bucket[10m])))",
+          "legendFormat": "p99 {{ job_type }}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 4,
+      "title": "Job Wait Duration P95 by Priority",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, priority) (rate(jobqueue_job_wait_duration_seconds_bucket[10m])))",
+          "legendFormat": "{{ priority }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 5,
+      "title": "Failure Rate by Type and Reason",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (job_type, failure_reason) (rate(jobqueue_jobs_failed_total[5m])) * 60",
+          "legendFormat": "{{ job_type }} / {{ failure_reason }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 6,
+      "title": "Retry Rate by Type",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (job_type) (rate(jobqueue_jobs_retried_total[5m])) * 60",
+          "legendFormat": "{{ job_type }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 7,
+      "title": "Recovery Actions at Startup",
+      "type": "bargauge",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 6 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (action) (increase(jobqueue_worker_recovery_actions_total[1h]))",
+          "legendFormat": "{{ action }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 8,
+      "title": "Loop Outcome Distribution",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 6 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(jobqueue_worker_loop_iterations_total[5m]))",
+          "legendFormat": "{{ outcome }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    }
+  ]
+}
