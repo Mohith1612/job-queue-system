@@ -1,0 +1,54 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: label
+            values: ["com.docker.compose.project"]
+
+    relabel_configs:
+      # Use the compose service name as the "service" label
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: service
+      # Container name for disambiguation when scaling workers
+      - source_labels: [__meta_docker_container_name]
+        regex: /(.*)
+        target_label: container
+      # Only ship logs from our app containers (api, worker)
+      - source_labels: [service]
+        regex: api|worker
+        action: keep
+
+    pipeline_stages:
+      # Parse the JSON log line written by structlog
+      - json:
+          expressions:
+            level: level
+            job_type: job_type
+            logger: logger
+            event: event
+
+      # Promote low-cardinality fields to Loki labels (keep ≤ 5 labels per stream)
+      - labels:
+          level:
+          job_type:
+
+      # Use the structured "event" field as the displayed log line in Grafana
+      - output:
+          source: event
+
+      # Drop DEBUG logs in production to reduce storage cost
+      - drop:
+          expression: '.*'
+          if: 'level == "debug"'
