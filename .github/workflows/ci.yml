@@ -172,6 +172,17 @@ jobs:
     needs: [docker-build]
 
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy observability configs to VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: "observability/"
+          target: "/opt/job-queue-system/"
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.4
         with:
