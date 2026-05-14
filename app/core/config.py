@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
     rate_limit_per_minute: int = 10
 
+    otel_endpoint: str | None = None
+    otel_service_name: str = "job-queue"
+    metrics_port: int = 8001
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: object) -> object:

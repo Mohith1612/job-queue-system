@@ -1,0 +1,116 @@
+groups:
+  - name: job_queue_alerts
+    interval: 1m
+    rules:
+
+      # ── Recording rule: retry storm index per job type ──────────────────────
+      - record: jobqueue_retry_storm_index
+        expr: |
+          sum by (job_type) (rate(jobqueue_jobs_retried_total[5m]))
+          /
+          clamp_min(sum by (job_type) (rate(jobqueue_jobs_created_total[5m])), 0.001)
+
+      # ── Alert 1: Queue depth too high ───────────────────────────────────────
+      - alert: QueueDepthTooHigh
+        expr: jobqueue_queue_depth{queue_name=~"priority|fifo"} > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.queue_name }} queue depth is {{ $value | humanize }}"
+          description: >
+            The {{ $labels.queue_name }} queue has more than 100 items for 5 minutes.
+            Workers are not keeping up with ingestion. Check worker logs and processing duration.
+
+      # ── Alert 2: Worker not consuming ──────────────────────────────────────
+      - alert: WorkerNotConsuming
+        expr: |
+          (
+            sum(rate(jobqueue_dequeue_total[5m])) == 0
+          )
+          and
+          (
+            sum(jobqueue_queue_depth{queue_name=~"priority|fifo"}) > 0
+          )
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Worker has stopped consuming jobs while queue is non-empty"
+          description: >
+            No dequeue operations for 3 minutes but queue depth > 0.
+            Worker is likely crashed or stalled. Check container status and worker error logs.
+
+      # ── Alert 3: Retry storm ────────────────────────────────────────────────
+      - alert: RetryStorm
+        expr: |
+          jobqueue_retry_storm_index > 0.5
+          and
+          sum by (job_type) (rate(jobqueue_jobs_created_total[5m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Retry storm on job type {{ $labels.job_type }}"
+          description: >
+            More than 50% of {{ $labels.job_type }} jobs are retrying for 10+ minutes.
+            Likely an upstream dependency is down or executor is misbehaving.
+
+      # ── Alert 4: Dead letter accumulation ──────────────────────────────────
+      - alert: DeadLetterAccumulation
+        expr: |
+          sum by (job_type) (
+            rate(jobqueue_jobs_failed_total{failure_reason="max_attempts_exhausted"}[1h])
+          ) * 3600 > 5
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job_type }} jobs permanently failing at high rate"
+          description: >
+            More than 5 {{ $labels.job_type }} jobs have permanently failed in the last hour.
+            These represent lost work. Investigate executor errors or upstream dependency health.
+
+      # ── Alert 5: API latency spike ──────────────────────────────────────────
+      - alert: APILatencySpike
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, http_route) (
+              rate(http_server_request_duration_seconds_bucket{http_route="/api/v1/jobs"}[5m])
+            )
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "POST /api/v1/jobs P95 latency is above 1s"
+          description: >
+            API P95 latency for job creation is {{ $value | humanizeDuration }} for 5 minutes.
+            Check DB query latency and connection pool utilization.
+
+      # ── Alert 6: Worker restart loop ────────────────────────────────────────
+      - alert: WorkerRestartLoop
+        expr: increase(jobqueue_worker_restarts_total[30m]) > 3
+        labels:
+          severity: critical
+        annotations:
+          summary: "Worker {{ $labels.worker_id }} is restarting repeatedly"
+          description: >
+            Worker has restarted {{ $value }} times in 30 minutes.
+            This indicates a crash loop. Startup recovery may be repeatedly running.
+            Check worker container logs for the root cause.
+
+      # ── Alert 7: DB connection pool exhaustion ──────────────────────────────
+      - alert: DBConnectionPoolExhausted
+        expr: |
+          sum(jobqueue_db_pool_size_total{state="checked_out"})
+          /
+          30 > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool is {{ $value | humanizePercentage }} utilized"
+          description: >
+            DB pool utilization > 85% of maximum (30 connections) for 5 minutes.
+            New requests will queue for a connection. Check for connection leaks or traffic spike.
