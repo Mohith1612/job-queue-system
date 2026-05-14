@@ -183,10 +183,10 @@ jobs:
             cd /opt/job-queue-system
 
             echo "==> Pulling new images"
-            docker compose pull
+            docker compose -f docker-compose.yml -f docker-compose.observability.yml pull
 
             echo "==> Recreating containers"
-            docker compose up -d --force-recreate --remove-orphans
+            docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d --force-recreate --remove-orphans
 
             echo "==> Health check"
             sleep 5
