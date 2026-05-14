@@ -164,6 +164,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build and push observability configs image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.observability-configs
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ghcr.io/mohith1612/job-queue-system/observability-configs:latest
+            ghcr.io/mohith1612/job-queue-system/observability-configs:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   deploy-backend:
     name: Deploy Backend to Oracle VM
     runs-on: ubuntu-latest
