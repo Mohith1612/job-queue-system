@@ -1,0 +1,11 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+# Single-node kind cluster. The extraPortMappings line lets us hit
+# the API service from the host at http://localhost:30080 once it's
+# exposed via a NodePort Service.
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 30080
+        protocol: TCP
