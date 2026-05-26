@@ -1,0 +1,55 @@
+# Postgres for the job queue.
+# Storage is emptyDir on purpose: this is a learning setup on a single
+# node, so data is intentionally ephemeral. Restart the pod and it
+# starts fresh (alembic on the API will re-create the schema).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: jobqueue
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: jobqueue
+            - name: POSTGRES_DB
+              value: jobqueue
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: jobqueue-secret
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+# ClusterIP Service: gives the Postgres pod a stable DNS name inside
+# the cluster ("postgres" within the jobqueue namespace) so the API
+# and worker pods can connect without knowing the pod IP.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: jobqueue
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
