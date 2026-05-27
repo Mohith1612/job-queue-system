@@ -50,7 +50,7 @@ kubectl get pods -n jobqueue -w
 curl http://localhost:30080/health
 
 # 7. Submit a job and watch the worker pick it up
-curl -X POST http://localhost:30080/jobs \
+curl -X POST http://localhost:30080/api/v1/jobs \
   -H 'Content-Type: application/json' \
   -d '{"type":"email_send","payload":{"to":"x@example.com"},"priority":"high"}'
 
