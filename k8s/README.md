@@ -8,8 +8,8 @@ Run the backend on a local single-node Kubernetes cluster using [kind](https://k
 
 | File | What it is |
 |---|---|
-| `kind-config.yaml` | Single-node kind cluster, exposes nodePort 30080 to the host |
-| `namespace.yaml` | `jobqueue` namespace that everything lives in |
+| `cluster/kind-config.yaml` | Single-node kind cluster, exposes nodePort 30080 to the host (kept out of the main dir so `kubectl apply -f k8s/` doesn't try to apply it) |
+| `00-namespace.yaml` | `jobqueue` namespace — `00-` prefix makes it sort first so a fresh `kubectl apply` doesn't race namespaced resources |
 | `configmap.yaml` | Non-secret env vars (`LOG_LEVEL`, `REDIS_URL`, etc.) |
 | `secret.yaml` | Dev-only `DATABASE_URL` and `POSTGRES_PASSWORD` |
 | `postgres.yaml` | Postgres Deployment + ClusterIP Service (`emptyDir` storage) |
@@ -31,7 +31,7 @@ Prereqs: [Docker](https://docs.docker.com/get-docker/), [`kind`](https://kind.si
 
 ```bash
 # 1. Create the cluster
-kind create cluster --config k8s/kind-config.yaml
+kind create cluster --config k8s/cluster/kind-config.yaml --name jobqueue
 
 # 2. Build the images locally
 docker build -f Dockerfile.api    -t jobqueue-api:dev    .
@@ -40,7 +40,7 @@ docker build -f Dockerfile.worker -t jobqueue-worker:dev .
 # 3. Load them into the kind node (no registry needed)
 kind load docker-image jobqueue-api:dev jobqueue-worker:dev
 
-# 4. Apply everything (order doesn't matter - kubectl is idempotent)
+# 4. Apply everything (the 00- prefix on namespace.yaml makes it apply first)
 kubectl apply -f k8s/
 
 # 5. Watch the pods come up
@@ -60,7 +60,7 @@ kubectl logs -n jobqueue deploy/worker -f
 ## Teardown
 
 ```bash
-kind delete cluster
+kind delete cluster --name jobqueue
 ```
 
 ## Iterating on code
@@ -69,7 +69,7 @@ After changing app code:
 
 ```bash
 docker build -f Dockerfile.api -t jobqueue-api:dev .
-kind load docker-image jobqueue-api:dev
+kind load docker-image jobqueue-api:dev --name jobqueue
 kubectl rollout restart deploy/api -n jobqueue
 ```
 
