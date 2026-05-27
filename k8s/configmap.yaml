@@ -1,0 +1,13 @@
+# Non-secret env shared by the API and worker pods.
+# Pydantic settings in app/core/config.py reads these directly.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jobqueue-config
+  namespace: jobqueue
+data:
+  LOG_LEVEL: "INFO"
+  WORKER_CONCURRENCY: "4"
+  JOB_MAX_EXECUTION_SECONDS: "300"
+  RECOVERY_STUCK_THRESHOLD_MINUTES: "10"
+  REDIS_URL: "redis://redis:6379/0"
