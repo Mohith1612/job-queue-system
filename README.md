@@ -579,7 +579,7 @@ The CI pipeline runs both test suites on every push and pull request, with a Pos
 
 ## Load Testing
 
-K6 load tests live in `k6/`. See [`k6/REPORT.md`](k6/REPORT.md) for full results.
+Results from the K6 load tests:
 
 | Test | VUs | p(95) | Error rate | Notes |
 |------|-----|-------|------------|-------|
@@ -592,7 +592,7 @@ K6 load tests live in `k6/`. See [`k6/REPORT.md`](k6/REPORT.md) for full results
 
 Zero errors across ~273,000 total requests. The read-path ceiling was not reached at 200 VUs.
 
-**Worker stress test** (`worker_stress.js`) runs three concurrent scenarios — a job creation flood (70% `payment_retry`), a queue depth monitor, and a completion tracker measuring end-to-end retry latency. Custom metrics: `retry_latency_ms`, `queue_depth_samples`, `job_eventually_completed`. See [`k6/REPORT.md`](k6/REPORT.md) for full details.
+**Worker stress test** (`worker_stress.js`) runs three concurrent scenarios — a job creation flood (70% `payment_retry`), a queue depth monitor, and a completion tracker measuring end-to-end retry latency. Custom metrics: `retry_latency_ms`, `queue_depth_samples`, `job_eventually_completed`.
 
 **Run a test:**
 
@@ -610,7 +610,7 @@ Production runs on an Oracle VM (ARM64) behind nginx. The `vm/` directory contai
 
 ### First-time server setup
 
-See [`vm/README.md`](vm/README.md) for the complete setup guide. Summary:
+Summary of the setup:
 
 ```bash
 # Copy config files to VM
